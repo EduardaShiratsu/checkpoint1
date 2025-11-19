@@ -561,3 +561,350 @@ dependencies:
     sdk: flutter
   http: ^1.1.0
   shared_preferences: ^2.2.0
+
+
+
+
+
+  chat 
+
+  
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+// ==============================
+// BASE URL DA API
+// ==============================
+const String baseUrl = "https://vida-equilibrio-api-69a356625afd.herokuapp.com";
+
+// ==============================
+// MODELO DA ATIVIDADE
+// ==============================
+class Atividade {
+  final int id;
+  final String nome;
+  final String descricao;
+  final int pontos;
+  final List<dynamic> participantes;
+
+  Atividade({
+    required this.id,
+    required this.nome,
+    required this.descricao,
+    required this.pontos,
+    required this.participantes,
+  });
+
+  factory Atividade.fromJson(Map<String, dynamic> json) {
+    return Atividade(
+      id: json["id"],
+      nome: json["nome"],
+      descricao: json["descricao"],
+      pontos: json["pontos"],
+      participantes: json["participantes"] ?? [],
+    );
+  }
+}
+
+// ==============================
+// MAIN
+// ==============================
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  String? userId;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => userId = prefs.getString("userId"));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: "Global Solutions",
+      debugShowCheckedModeBanner: false,
+      home: userId == null ? const UserIdPage() : TodasAtividadesPage(),
+    );
+  }
+}
+
+// ==============================
+// TELA PARA DEFINIR USER ID
+// ==============================
+class UserIdPage extends StatefulWidget {
+  const UserIdPage({super.key});
+
+  @override
+  State<UserIdPage> createState() => _UserIdPageState();
+}
+
+class _UserIdPageState extends State<UserIdPage> {
+  final TextEditingController _controller = TextEditingController();
+
+  Future<void> salvarUserId() async {
+    if (_controller.text.trim().isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("userId", _controller.text.trim());
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => TodasAtividadesPage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Bem-vindo")),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text("Digite seu UserID:", style: TextStyle(fontSize: 20)),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _controller,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: "ex: eduarda",
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: salvarUserId,
+              child: const Text("Salvar"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==============================
+// TELA: TODAS ATIVIDADES
+// ==============================
+class TodasAtividadesPage extends StatefulWidget {
+  @override
+  State<TodasAtividadesPage> createState() => _TodasAtividadesPageState();
+}
+
+class _TodasAtividadesPageState extends State<TodasAtividadesPage> {
+  List<Atividade> atividades = [];
+  String userId = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+    _fetchAtividades();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    userId = prefs.getString("userId") ?? "";
+  }
+
+  Future<void> _fetchAtividades() async {
+    try {
+      final response = await http.get(Uri.parse("$baseUrl/atividades"));
+      if (response.statusCode == 200) {
+        final List jsonList = jsonDecode(response.body);
+        setState(() =>
+            atividades = jsonList.map((e) => Atividade.fromJson(e)).toList());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Erro ao carregar atividades")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erro: $e")),
+      );
+    }
+  }
+
+  Future<void> _alterarUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("userId");
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const UserIdPage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Todas Atividades"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.account_circle),
+            onPressed: _alterarUserId,
+          )
+        ],
+      ),
+      body: ListView.builder(
+        itemCount: atividades.length,
+        itemBuilder: (_, i) {
+          final a = atividades[i];
+          return Card(
+            child: ListTile(
+              title: Text(a.nome),
+              subtitle: Text(a.descricao),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DetalheAtividadePage(id: a.id),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ==============================
+// TELA: DETALHE DA ATIVIDADE
+// ==============================
+class DetalheAtividadePage extends StatefulWidget {
+  final int id;
+
+  const DetalheAtividadePage({super.key, required this.id});
+
+  @override
+  State<DetalheAtividadePage> createState() => _DetalheAtividadePageState();
+}
+
+class _DetalheAtividadePageState extends State<DetalheAtividadePage> {
+  Atividade? atividade;
+  String userId = "";
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserId();
+    _fetchDetalhes();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    userId = prefs.getString("userId") ?? "";
+  }
+
+  Future<void> _fetchDetalhes() async {
+    try {
+      final response = await http
+          .get(Uri.parse("$baseUrl/atividades/${widget.id}?nome=$userId"));
+
+      if (response.statusCode == 200) {
+        setState(() => atividade = Atividade.fromJson(jsonDecode(response.body)));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Erro ao carregar detalhes")),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erro: $e")),
+      );
+    }
+  }
+
+  bool get participa => atividade?.participantes.contains(userId) ?? false;
+
+  Future<void> participar() async {
+    try {
+      final res = await http.post(
+        Uri.parse("$baseUrl/atividades/${widget.id}/participar"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"nome": userId}),
+      );
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Você entrou na atividade!")),
+        );
+        _fetchDetalhes();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> sair() async {
+    try {
+      final res = await http.delete(
+        Uri.parse("$baseUrl/atividades/${widget.id}/participar?nome=$userId"),
+      );
+
+      if (res.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Você saiu da atividade!")),
+        );
+        _fetchDetalhes();
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (atividade == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text(atividade!.nome)),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Descrição:",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(atividade!.descricao),
+            const SizedBox(height: 20),
+            Text("Pontos: ${atividade!.pontos}",
+                style: const TextStyle(fontSize: 18)),
+            const SizedBox(height: 20),
+            Text("Participantes:",
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(atividade!.participantes.join(", ")),
+            const Spacer(),
+            ElevatedButton(
+              onPressed: participa ? sair : participar,
+              child: Text(participa ? "Sair da atividade" : "Participar"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
